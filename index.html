@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa República Dominicana</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet/dist/leaflet.css" />
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+        }
+        #map {
+            height: 70vh;
+            width: 100%;
+        }
+        #provinceList {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            text-align: center;
+            margin: 10px 0;
+        }
+        .province-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .case-count {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 5px;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mapa de Casos por Localidades</h1>
+    <input type="file" id="excelFile" accept=".xlsx, .xls" />
+    <button onclick="generateDashboard()">Generar Dashboard</button>
+    <div id="map"></div>
+    <div id="provinceList"></div>
+
+    <script>
+        let localidadesData = {};
+
+        function readExcel(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                    resolve(jsonData);
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        async function processFile(event) {
+            const file = event.target.files[0];
+            if (file) {
+                try {
+                    const data = await readExcel(file);
+                    localidadesData = data.reduce((acc, row) => {
+                        const localidad = row['LOCALIDAD_LONG_NAME'];
+                        if (localidad) {
+                            acc[localidad] = (acc[localidad] || 0) + 1;
+                        }
+                        return acc;
+                    }, {});
+                    alert('Datos cargados exitosamente.');
+                } catch (error) {
+                    console.error('Error al procesar el archivo:', error);
+                    alert('Error al procesar el archivo.');
+                }
+            }
+        }
+
+        async function generateDashboard() {
+            if (!Object.keys(localidadesData).length) {
+                alert('Por favor, cargue un archivo con datos primero.');
+                return;
+            }
+
+            const map = L.map('map').setView([18.7357, -70.1627], 8);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+            }).addTo(map);
+
+            const sortedProvinces = Object.entries(localidadesData).sort((a, b) => b[1] - a[1]);
+
+            // Actualizar el listado
+            const provinceList = document.getElementById('provinceList');
+            provinceList.innerHTML = '';
+            sortedProvinces.forEach(([province, count]) => {
+                const item = document.createElement('div');
+                item.className = 'province-item';
+                item.innerHTML = `
+                    <span>${province}</span>
+                    <span class="case-count" style="background-color: #28a745">${count}</span>
+                `;
+                provinceList.appendChild(item);
+            });
+
+            // Mostrar puntos en el mapa
+            for (const [localidad, count] of sortedProvinces) {
+                try {
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${localidad},Rep%C3%BAblica%20Dominicana&format=json`);
+                    const locations = await response.json();
+
+                    if (locations.length > 0) {
+                        const { lat, lon } = locations[0];
+                        L.circleMarker([lat, lon], {
+                            radius: 5, // Tamaño más pequeño
+                            color: '#28a745', // Color verde
+                            fillColor: '#28a745',
+                            fillOpacity: 0.8
+                        }).bindPopup(`<b>${localidad}</b><br>${count} casos`).addTo(map);
+                    }
+                } catch (error) {
+                    console.error(`Error al buscar coordenadas para ${localidad}:`, error);
+                }
+            }
+        }
+
+        document.getElementById('excelFile').addEventListener('change', processFile);
+    </script>
+</body>
+</html>
