@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generar Dashboard desde Excel</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.2/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #ffffff;
+            color: #000000;
+            margin: 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .chart-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+        .chart {
+            flex: 1 1 400px;
+            max-width: 600px;
+        }
+        .buttons-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .dark-mode {
+            background-color: #121212;
+            color: #ffffff;
+        }
+        .present-mode {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <h1>Generar Dashboard de Síntomas</h1>
+    
+    <div class="buttons-container">
+        <!-- Botones de control -->
+        <input type="file" id="excelFile" accept=".xlsx, .xls" />
+        <button onclick="generarDashboard()">Generar Dashboard</button>
+        <button onclick="toggleDarkMode()">Modo Oscuro</button>
+        <button onclick="togglePresentMode()">Modo Presentación</button>
+    </div>
+    
+    <div class="chart-container" id="chartsContainer"></div>
+
+    <script>
+        let sintomasData = [];
+        let isDarkMode = false;
+        let isPresentMode = false;
+
+        // Función para leer el archivo Excel
+        function leerExcel(file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const data = event.target.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+                const sheetName = workbook.SheetNames[0]; // Seleccionamos la primera hoja
+                const sheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(sheet); // Convertir la hoja a JSON
+
+                // Extraemos los datos del campo DESC_SINTOMA_AVERIA_1
+                sintomasData = json.map(row => row.DESC_SINTOMA_AVERIA_1).filter(Boolean);
+                console.log(sintomasData);
+            };
+            reader.readAsBinaryString(file);
+        }
+
+        // Función para generar el Dashboard con los gráficos
+        function generarDashboard() {
+            if (sintomasData.length === 0) {
+                alert("Por favor, cargue un archivo Excel primero.");
+                return;
+            }
+
+            // Contamos la cantidad de veces que aparece cada síntoma
+            const sintomasCount = sintomasData.reduce((acc, sintoma) => {
+                acc[sintoma] = (acc[sintoma] || 0) + 1;
+                return acc;
+            }, {});
+
+            // Preparamos los datos para los gráficos
+            const labels = Object.keys(sintomasCount);
+            const data = Object.values(sintomasCount);
+
+            // Dividir los datos en bloques de 10 para que sean más manejables
+            const chunkSize = 10;
+            const chartsContainer = document.getElementById('chartsContainer');
+            chartsContainer.innerHTML = ''; // Limpiar contenedor
+
+            for (let i = 0; i < labels.length; i += chunkSize) {
+                const chunkLabels = labels.slice(i, i + chunkSize);
+                const chunkData = data.slice(i, i + chunkSize);
+
+                // Crear un nuevo lienzo para el gráfico
+                const chartDiv = document.createElement('div');
+                chartDiv.className = 'chart';
+                const canvas = document.createElement('canvas');
+                chartDiv.appendChild(canvas);
+                chartsContainer.appendChild(chartDiv);
+
+                // Crear el gráfico
+                const ctx = canvas.getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar', // Gráfico de barras horizontales
+                    data: {
+                        labels: chunkLabels,
+                        datasets: [{
+                            label: 'Cantidad de Casos por Síntoma',
+                            data: chunkData,
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y', // Cambiar orientación a horizontal
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Función para alternar Modo Oscuro
+        function toggleDarkMode() {
+            isDarkMode = !isDarkMode;
+            document.body.classList.toggle('dark-mode', isDarkMode);
+        }
+
+        // Función para alternar Modo Presentación
+        function togglePresentMode() {
+            isPresentMode = !isPresentMode;
+            const chartsContainer = document.getElementById('chartsContainer');
+            chartsContainer.classList.toggle('present-mode', isPresentMode);
+        }
+
+        // Manejar el archivo cuando se carga
+        document.getElementById('excelFile').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                leerExcel(file);
+            }
+        });
+    </script>
+</body>
+</html>
